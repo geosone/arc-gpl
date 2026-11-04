@@ -7,6 +7,9 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#ifdef _WIN32
+#include <errno.h>
+#endif
 #include <ctype.h>
 #include "arc.h"
 
@@ -101,7 +104,12 @@ FILE *
 tmpopen(path)
 	char *path;
 {
-	int fd = open(path, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
+	/* fdopen does not change the underlying descriptor's translation mode. */
+#ifdef _WIN32
+    int fd = open(path, O_CREAT | O_WRONLY | O_EXCL | O_BINARY, S_IRUSR | S_IWUSR);
+#else
+    int fd = open(path, O_CREAT | O_WRONLY | O_EXCL, S_IRUSR | S_IWUSR);
+#endif
 	if (fd < 0 )
 		return NULL;
 	return fdopen(fd, OPEN_W);
@@ -202,6 +210,69 @@ makefnam(rawfn, template, result)
 	strcat(result, er[9] ? er + 9 : et + 9);
 	return ((char *) &result[0]);
 }
+
+#ifdef _WIN32
+/* MinGW supplies dirent enumeration, but not POSIX scandir/alphasort.
+ * Own each selected entry and release the entire partial list on failure. */
+static int
+arc_alphasort(const void *left, const void *right)
+{
+    const struct dirent *const *a = left;
+    const struct dirent *const *b = right;
+    return strcmp((*a)->d_name, (*b)->d_name);
+}
+
+static int
+arc_scandir(const char *path, struct dirent ***result,
+            int (*select_entry)(struct dirent *),
+            int (*compare)(const void *, const void *))
+{
+    DIR *directory = opendir(path);
+    struct dirent *entry;
+    struct dirent **list = NULL;
+    int count = 0;
+    if (directory == NULL) {
+        return -1;
+    }
+    for (;;) {
+        struct dirent **expanded;
+        errno = 0;
+        entry = readdir(directory);
+        if (entry == NULL) {
+            if (errno != 0) {
+                goto failed;
+            }
+            break;
+        }
+        if (!select_entry(entry)) {
+            continue;
+        }
+        expanded = realloc(list, (count + 1) * sizeof(*list));
+        if (expanded == NULL) {
+            goto failed;
+        }
+        list = expanded;
+        list[count] = malloc(sizeof(*entry));
+        if (list[count] == NULL) {
+            goto failed;
+        }
+        memcpy(list[count++], entry, sizeof(*entry));
+    }
+    closedir(directory);
+    if (count > 1) {
+        qsort(list, count, sizeof(*list), compare);
+    }
+    *result = list;
+    return count;
+failed:
+    while (count > 0) {
+        free(list[--count]);
+    }
+    free(list);
+    closedir(directory);
+    return -1;
+}
+#endif
 
 #if	NEED_ALPHASORT
 
@@ -313,7 +384,7 @@ dir(filename)		/* get files, one by one */
 	static struct DIRECT **namelist;
 	static char   **NameList;
 	static char	namecopy[STRLEN], *dirname;
-#if	UNIX
+#if	UNIX && !defined(_WIN32)
 	int             alphasort();
 	int             scandir();
 #endif				/* UNIX */
@@ -331,7 +402,14 @@ dir(filename)		/* get files, one by one */
 			pattern = filename;
 			dirname = ".";
 		}
+#ifdef _WIN32
+        Nnum = arc_scandir(dirname, &namelist, fmatch, arc_alphasort);
+#else
 		Nnum = scandir(dirname, &namelist, fmatch, alphasort);
+#endif
+        if (Nnum < 0) {
+            arcdie("Cannot enumerate directory %s", dirname);
+        }
 		NameList = (char **) malloc(Nnum * sizeof(char *));
 		for (ii = 0; ii < Nnum; ii++) {
 			(NameList)[ii] = malloc(strlen(namelist[ii]->d_name) + 1);

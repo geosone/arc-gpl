@@ -24,6 +24,48 @@
 
 VOID	arcdie();
 
+#ifdef _WIN32
+/* ARC members are flat basenames, never paths. Reject Win32 device aliases,
+ * drive/ADS syntax and trailing-dot/space normalization before opening a file.
+ * The header reader has already bounded and terminated the 13-byte name. */
+static int
+unsafe_windows_name(const char *name)
+{
+    const unsigned char *cursor = (const unsigned char *)name;
+    char stem[FNLEN];
+    size_t length = strlen(name), i = 0;
+    if (length == 0 || name[length - 1] == '.' || name[length - 1] == ' ') {
+        return 1;
+    }
+    while (*cursor) {
+        if (*cursor < 32 || strchr("\\/:<>\"|?*", *cursor) != NULL) {
+            return 1;
+        }
+        cursor++;
+    }
+    while (name[i] && name[i] != '.') {
+        stem[i] = (char)toupper((unsigned char)name[i]);
+        i++;
+    }
+    /* Win32 device detection also ignores spaces before the extension. */
+    while (i > 0 && stem[i - 1] == ' ') {
+        i--;
+    }
+    stem[i] = 0;
+    if (!strcmp(stem, "CON") || !strcmp(stem, "PRN") ||
+        !strcmp(stem, "AUX") || !strcmp(stem, "NUL") ||
+        !strcmp(stem, "CONIN$") || !strcmp(stem, "CONOUT$")) {
+        return 1;
+    }
+    return i == 4 && (!strncmp(stem, "COM", 3) || !strncmp(stem, "LPT", 3)) &&
+           ((stem[3] >= '1' && stem[3] <= '9') ||
+            (unsigned char)stem[3] == 0xb9 || (unsigned char)stem[3] == 0xb2 ||
+            (unsigned char)stem[3] == 0xb3);
+}
+#endif
+
+
+
 int
 readhdr(hdr, f)			/* read a header from an archive */
 	struct heads   *hdr;	/* storage for header */
@@ -109,7 +151,11 @@ readhdr(hdr, f)			/* read a header from an archive */
 #if	_MTS
 	(void) atoe(hdr->name, strlen(hdr->name));
 #endif
+#ifdef _WIN32
+    if (unsafe_windows_name(hdr->name))
+#else
 	if (strchr(hdr->name, CUTOFF) != NULL)
+#endif
 		arcdie("%s contains illegal filename %s", arcname, hdr->name);
 
 	for (i = 0, hdr->size=0; i<4; hdr->size<<=8, hdr->size += dummy[16-i], i++);

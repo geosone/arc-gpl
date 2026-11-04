@@ -1,0 +1,5 @@
+*.o
+/arc
+/marc
+/*.exe
+/build/

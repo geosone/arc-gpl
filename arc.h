@@ -27,9 +27,20 @@
 
 #if	BSD || SYSV
 #define	UNIX	1
+#ifdef _WIN32
+/* Native Win32 still uses the portable directory layer. Archive streams must
+ * be binary: text mode corrupts CR/LF and 0x1a bytes in compressed payloads. */
+#define CUTOFF '\\'
+#define OPEN_R "rb"
+#define OPEN_W "wb"
+typedef unsigned int u_int;
+typedef unsigned short u_short;
+typedef unsigned char u_char;
+#else
 #define	CUTOFF	'/'
 #define	OPEN_R	"r"
 #define	OPEN_W	"w"
+#endif
 #include <ctype.h>
 #include <sys/types.h>
 #endif

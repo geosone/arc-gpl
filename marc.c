@@ -91,14 +91,28 @@ char *arg[];			       /* pointers to arguments */
 	arctemp = calloc(1, STRLEN);
 	if (!(arctemp2 = envfind("ARCTEMP")))
 		arctemp2 = envfind("TMPDIR");
-	if (arctemp2) {
+#ifdef _WIN32
+    /* Native Windows does not normally define TMPDIR or have /tmp. */
+    if (arctemp2 == NULL || *arctemp2 == '\0') {
+        arctemp2 = envfind("TEMP");
+    }
+    if (arctemp2 == NULL || *arctemp2 == '\0') {
+        arctemp2 = envfind("TMP");
+    }
+    if (arctemp2 != NULL && strlen(arctemp2) >= STRLEN - 16) {
+        arcdie("Temporary directory exceeds ARC's legacy path limit");
+    }
+#endif
+	if (arctemp2 && *arctemp2) {
 		strncpy(arctemp, arctemp2, STRLEN - 16);
 		arctemp[STRLEN - 17] = '\0';
 		n = strlen(arctemp);
 		if (arctemp[n - 1] != CUTOFF)
 			arctemp[n] = CUTOFF;
 	}
-#if	UNIX
+#ifdef _WIN32
+    else strcpy(arctemp, ".\\");
+#elif UNIX
 	else	strcpy(arctemp, "/tmp/");
 #endif
 #if	!MSDOS

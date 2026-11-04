@@ -20,6 +20,9 @@
  */
 #include <stdio.h>
 #include "arc.h"
+#ifdef _WIN32
+#include <sys/utime.h>
+#endif
 
 #if	MSDOS
 #include "fileio2.h"		/* needed for filehand */
@@ -171,8 +174,12 @@ setstamp(f, date, time)		/* set a file's date/time stamp */
 #endif
 #if	UNIX
 	struct tm	tm;
+#ifdef _WIN32
+    struct __utimbuf64 stamp;
+#else
 	struct timeval  tvp[2];
 	int	utimes();
+#endif
 	time_t	tmclock();
 	tm.tm_sec = (time & 31) * 2;
 	tm.tm_min = (time >> 5) & 63;
@@ -180,10 +187,23 @@ setstamp(f, date, time)		/* set a file's date/time stamp */
 	tm.tm_mday = date & 31;
 	tm.tm_mon = ((date >> 5) & 15) - 1;
 	tm.tm_year = (date >> 9) + 80;
+#ifdef _WIN32
+    /* DOS timestamps are local time; let the CRT resolve daylight saving.
+     * Explicit 64-bit time avoids the x86 CRT's 2038 boundary. */
+    tm.tm_isdst = -1;
+    stamp.actime = stamp.modtime = _mktime64(&tm);
+    if (stamp.modtime == -1 || _utime64(f, &stamp) != 0) {
+        if (warn) {
+            fprintf(stderr, "Cannot set timestamp: %s\n", f);
+            nerrs++;
+        }
+    }
+#else
 	tvp[0].tv_sec = tmclock(&tm);
 	tvp[1].tv_sec = tvp[0].tv_sec;
 	tvp[0].tv_usec = tvp[1].tv_usec = 0;
 	utimes(f, tvp);
+#endif
 #endif
 }
 
