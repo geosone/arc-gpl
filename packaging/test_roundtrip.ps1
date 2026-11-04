@@ -93,6 +93,10 @@ try {
                 if (@(Get-ChildItem -LiteralPath $outputDirectory -Force).Count -ne 0) {
                     throw 'An unsafe archive wrote a file before rejection.'
                 }
+                # The nonzero native status was expected and checked above.
+                # GitHub's pwsh wrapper exits with LASTEXITCODE, so clear only
+                # this handled rejection after every assertion has passed.
+                $global:LASTEXITCODE = 0
             } finally {
                 Pop-Location
             }
