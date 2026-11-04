@@ -3,6 +3,7 @@ name: Native archive qualification
 on:
   push:
     branches: [master, windows/native-build]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -32,12 +33,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install cross compiler
-        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 wixl
       - name: Cross-build native Windows tools
         shell: pwsh
         run: ./build_windows.ps1 -Architecture '${{ matrix.architecture }}' -OutputDirectory '${{ runner.temp }}/arc-output'
       - name: Include complete matching source and build scripts
         run: git archive --format=tar.gz -o '${{ runner.temp }}/arc-output/source.tar.gz' HEAD
+      - name: Build native MSI with managed system PATH
+        shell: pwsh
+        run: ./new_windows_msi.ps1 -BinaryDirectory '${{ runner.temp }}/arc-output' -SourceArchive '${{ runner.temp }}/arc-output/source.tar.gz' -OutputDirectory '${{ runner.temp }}/arc-msi' -Architecture '${{ matrix.architecture }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msi-${{ matrix.architecture }}
+          path: ${{ runner.temp }}/arc-msi/*.msi
       - uses: actions/upload-artifact@v4
         with:
           name: windows-${{ matrix.architecture }}
@@ -83,3 +91,42 @@ jobs:
       - name: Read native Windows archive on Unix
         shell: pwsh
         run: ./packaging/test_roundtrip.ps1 -ArcPath ./arc -ReferenceArchive /tmp/arcref/trial.arc
+
+  windows-msi-test:
+    needs: windows-build
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: msi-${{ matrix.architecture }}
+          path: C:/arcpkg
+      - name: Install, repair, verify CMD/PowerShell PATH and uninstall
+        shell: pwsh
+        run: |
+          $package = (Get-ChildItem C:/arcpkg/*.msi).FullName
+          ./packaging/test_windows_msi.ps1 -Package $package -Architecture '${{ matrix.architecture }}'
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows-build, windows-test, reverse-compatibility, windows-msi-test]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish qualified portable packages, MSI and matching source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 packaging/prepare_release.py artifacts release
+          cd release
+          sha256sum *.zip *.msi *.tar.gz > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "SEA ARC $GITHUB_REF_NAME" --notes-file ../packaging/RELEASE.md *.zip *.msi *.tar.gz SHA256SUMS

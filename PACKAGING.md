@@ -66,3 +66,17 @@ Unicode and long path support are not qualified. These tests do not constitute
 a complete security audit of this legacy parser. MARC compiles but is not yet
 covered by the ARC round-trip tests. MSI packaging and actual Mystic/MUTIL
 macro/working-directory integration remain separate pending work.
+
+## MSI and command discovery
+
+`new_windows_msi.ps1` packages a qualified native build plus matching source.
+MSI version 5.21.2 installs under Program Files/SEA ARC and appends that folder
+to machine PATH using Windows Installer list semantics. Repair does not duplicate
+the entry and uninstall removes only its own member. Existing shells/services
+must be restarted. The portable ZIP does not modify PATH.
+
+`packaging/finalize_msi_path.ps1` checks the compiled Environment table. wixl
+0.106 omits the uninstall '-' flag even for Permanent=no; this helper fixes only
+that known omission and refuses a row that would replace the entire PATH.
+Native x86/x64 tests cover installation, real ARC operations, repair, discovery
+from both CMD and PowerShell and exact PATH restoration after removal.
