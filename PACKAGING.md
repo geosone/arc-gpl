@@ -64,8 +64,7 @@ ARC retains historical limits: a 100-byte path buffer, a 13-byte member-name
 field and 8.3 archive-name construction. Use short archive/member basenames;
 Unicode and long path support are not qualified. These tests do not constitute
 a complete security audit of this legacy parser. MARC compiles but is not yet
-covered by the ARC round-trip tests. MSI packaging and actual Mystic/MUTIL
-macro/working-directory integration remain separate pending work.
+covered by the ARC round-trip tests. Actual Mystic/MUTIL macro/working-directory integration remains separate pending work.
 
 ## MSI and command discovery
 
@@ -75,8 +74,8 @@ to machine PATH using Windows Installer list semantics. Repair does not duplicat
 the entry and uninstall removes only its own member. Existing shells/services
 must be restarted. The portable ZIP does not modify PATH.
 
-`packaging/finalize_msi_path.ps1` checks the compiled Environment table. wixl
-0.106 omits the uninstall '-' flag even for Permanent=no; this helper fixes only
-that known omission and refuses a row that would replace the entire PATH.
+`packaging/finalize_msi_path.ps1` authors and checks the native Environment table. Older Ubuntu wixl lacks
+Environment-element support entirely, and wixl 0.106 omits the uninstall '-' flag even for Permanent=no. The helper creates a verified append/remove row
+and the required standard actions, never replacing an existing environment table.
 Native x86/x64 tests cover installation, real ARC operations, repair, discovery
 from both CMD and PowerShell and exact PATH restoration after removal.

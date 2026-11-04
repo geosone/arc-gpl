@@ -1,5 +1,5 @@
 #Requires -Version 7.4
-<# Verifies one append-only system PATH row and corrects wixl 0.106 uninstall flags. #>
+<# Authors and verifies an append-only MSI system PATH row, including uninstall. #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Package,
@@ -7,34 +7,69 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-function Get-PathRow {
-    $table = @(& msiinfo export $Package Environment)
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Cannot inspect the compiled Environment table.'
-    }
-    $rows = @($table | Select-Object -Skip 3 | Where-Object { $_.Trim() } | ForEach-Object { , ($_ -split "`t") })
-    if ($rows.Count -ne 1 -or $rows[0].Count -ne 4) {
-        throw 'Expected exactly one managed environment row.'
-    }
-    $row = $rows[0]
-    if ($row[2] -cne '[~];[INSTALLFOLDER]' -or $row[3] -cne $Component) {
-        throw 'Refusing a PATH row that replaces the whole value or belongs to another component.'
-    }
-    return , $row
+$tables = @(& msiinfo tables $Package)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Cannot inspect the MSI tables.'
 }
-$row = Get-PathRow
-if ($row[1] -ceq '=*PATH') {
-    # wixl 0.106 emits no '-' flag for Permanent=no. MSI requires this flag to
-    # remove the appended list member on uninstall. Keep the WiX declaration
-    # correct and normalize only this known compiler omission, never its value.
-    # https://learn.microsoft.com/windows/win32/msi/environment-table
-    $query = 'UPDATE `Environment` SET `Name` = ''=-*PATH'' WHERE `Name` = ''=*PATH'' AND `Component_` = ''{0}''' -f $Component
-    & msibuild $Package -q $query
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Cannot author the required uninstall flag.'
+# Older Ubuntu wixl cannot compile Environment elements at all; 0.106 also
+# omits their uninstall flag. Author the standard MSI table directly, with
+# identical semantics on either compiler. Never replace the whole PATH value.
+# https://learn.microsoft.com/windows/win32/msi/environment-table
+if ($tables -contains 'Environment') {
+    $existingRows = @(& msiinfo export $Package Environment)
+    if ($LASTEXITCODE -ne 0 -or @($existingRows | Select-Object -Skip 3 | Where-Object { $_.Trim() }).Count -ne 0) {
+        throw 'Refusing to overwrite existing environment rows.'
     }
 }
-$row = Get-PathRow
-if ($row[1] -cne '=-*PATH') {
-    throw 'The MSI PATH row must set on install, remove on uninstall and use machine scope.'
+$components = @(& msiinfo export $Package Component)
+if ($LASTEXITCODE -ne 0 -or @($components | Where-Object { ($_ -split "`t")[0] -ceq $Component }).Count -ne 1) {
+    throw 'The selected PATH owner component is absent or ambiguous.'
+}
+$idt = [IO.Path]::GetTempFileName()
+try {
+    $definition = @(
+        "Environment`tName`tValue`tComponent_",
+        "s72`tl64`tL255`ts72",
+        "Environment`tEnvironment",
+        "SystemPath`t=-*PATH`t[~];[INSTALLFOLDER]`t$Component"
+    ) -join "`r`n"
+    [IO.File]::WriteAllText($idt, $definition + "`r`n", [Text.UTF8Encoding]::new($false))
+    & msibuild $Package -i $idt
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Cannot author the MSI PATH table.'
+    }
+} finally {
+    Remove-Item -LiteralPath $idt -Force
+}
+$sequence = @(& msiinfo export $Package InstallExecuteSequence)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Cannot inspect MSI action sequencing.'
+}
+foreach ($action in @(
+        @{
+            Name     = 'RemoveEnvironmentStrings'
+            Sequence = 3300
+        },
+        @{
+            Name     = 'WriteEnvironmentStrings'
+            Sequence = 5200
+        }
+    )) {
+    $existing = @($sequence | Where-Object { ($_ -split "`t")[0] -ceq $action.Name })
+    if ($existing.Count -eq 0) {
+        $query = 'INSERT INTO `InstallExecuteSequence` (`Action`, `Sequence`) VALUES (''{0}'', {1})' -f $action.Name, $action.Sequence
+        & msibuild $Package -q $query
+        if ($LASTEXITCODE -ne 0) {
+            throw 'Cannot author required environment actions.'
+        }
+    }
+}
+$rows = @(& msiinfo export $Package Environment)
+if ($LASTEXITCODE -ne 0) {
+    throw 'Cannot inspect the compiled Environment table.'
+}
+$expected = "SystemPath`t=-*PATH`t[~];[INSTALLFOLDER]`t$Component"
+$payload = @($rows | Select-Object -Skip 3 | Where-Object { $_.Trim() })
+if ($payload.Count -ne 1 -or $payload[0].TrimEnd("`r") -cne $expected) {
+    throw 'The MSI must append one machine PATH member and remove it on uninstall.'
 }

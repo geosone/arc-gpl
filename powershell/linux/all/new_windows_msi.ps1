@@ -80,7 +80,7 @@ $definition = @"
             <File Id="Packaging" Source="$payloadXml/PACKAGING.md" />
             <File Id="MingwNotice" Source="$payloadXml/MINGW-NOTICES.txt" />
             <File Id="GccNotice" Source="$payloadXml/GCC-NOTICES.txt" />
-            <Environment Id="SystemPath" Name="PATH" Action="set" Part="last" Value="[INSTALLFOLDER]" System="yes" Permanent="no" />
+
           </Component>
         </Directory>
       </Directory>
