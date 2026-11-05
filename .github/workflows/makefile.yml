@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install cross compiler
-        run: sudo apt-get update && sudo apt-get install -y mingw-w64 wixl
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 wixl msitools
       - name: Cross-build native Windows tools
         shell: pwsh
         run: ./build_windows.ps1 -Architecture '${{ matrix.architecture }}' -OutputDirectory '${{ runner.temp }}/arc-output'
