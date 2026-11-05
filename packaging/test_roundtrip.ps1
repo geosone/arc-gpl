@@ -19,7 +19,10 @@ Set-StrictMode -Version Latest
 $ArcPath = (Resolve-Path -LiteralPath $ArcPath).Path
 $keepWork = [bool]$WorkDirectory
 if (!$WorkDirectory) {
-    $WorkDirectory = Join-Path ([IO.Path]::GetTempPath()) ('arc-' + [guid]::NewGuid().ToString('N'))
+    # ARC keeps archive paths in historical fixed-size buffers and rejects
+    # longer arguments ("Too long argument"). A full 32-digit GUID below a
+    # hosted runner's %TEMP% exceeds that limit, so use a short random suffix.
+    $WorkDirectory = Join-Path ([IO.Path]::GetTempPath()) ('arc-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 }
 if (Test-Path -LiteralPath $WorkDirectory) {
     throw 'Use a new, empty test directory.'
