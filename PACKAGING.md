@@ -66,10 +66,20 @@ Unicode and long path support are not qualified. These tests do not constitute
 a complete security audit of this legacy parser. MARC compiles but is not yet
 covered by the ARC round-trip tests. Actual Mystic/MUTIL macro/working-directory integration remains separate pending work.
 
+## Member names on Windows
+
+Windows file names ignore case. Since 5.21q-3 the Windows build also compares
+member names without case when adding: `arc a x.arc file_id.diz` replaces an
+existing `FILE_ID.DIZ` instead of storing a second member that extracts onto
+the same file, as ZIP, ARJ and 7-Zip behave on Windows. Mystic's "Update DIZ"
+relies on that: it writes a lower-case `file_id.diz` and adds it with the
+archive record's Pack command. Unix builds keep the historical case-sensitive
+comparison. `packaging/test_roundtrip.ps1` checks both.
+
 ## MSI and command discovery
 
 `new_windows_msi.ps1` packages a qualified native build plus matching source.
-MSI version 5.21.2 installs under Program Files/SEA ARC and appends that folder
+MSI version 5.21.3 installs under Program Files/SEA ARC and appends that folder
 to machine PATH using Windows Installer list semantics. Repair does not duplicate
 the entry and uninstall removes only its own member. Existing shells/services
 must be restarted. The portable ZIP does not modify PATH.

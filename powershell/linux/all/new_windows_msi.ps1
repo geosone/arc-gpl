@@ -64,7 +64,7 @@ $payloadXml = [Security.SecurityElement]::Escape($payload)
 # this member. Existing processes retain their inherited environment until restart.
 $definition = @"
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="SEA ARC $Architecture" Language="1033" Version="5.21.2" Manufacturer="Disconnected by Peer AT" UpgradeCode="$($profile.Upgrade)">
+  <Product Id="*" Name="SEA ARC $Architecture" Language="1033" Version="5.21.3" Manufacturer="Disconnected by Peer AT" UpgradeCode="$($profile.Upgrade)">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
     <Media Id="1" Cabinet="arc.cab" EmbedCab="yes" />
     <MajorUpgrade DowngradeErrorMessage="A newer ARC package is already installed." />
@@ -93,7 +93,7 @@ $definition = @"
 "@
 $wxs = Join-Path $OutputDirectory 'arc.wxs'
 [IO.File]::WriteAllText($wxs, $definition)
-$package = Join-Path $OutputDirectory "arc-5.21q-2-windows-$Architecture.msi"
+$package = Join-Path $OutputDirectory "arc-5.21q-3-windows-$Architecture.msi"
 & wixl -a $Architecture -o $package $wxs
 if ($LASTEXITCODE -ne 0) {
     throw 'ARC MSI packaging failed.'

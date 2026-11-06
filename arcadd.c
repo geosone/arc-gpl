@@ -25,6 +25,22 @@
 #endif
 
 static	int	addfile();
+
+/*
+ * Compare member names and paths. Windows file names ignore case, so adding
+ * "file_id.diz" must replace an existing "FILE_ID.DIZ" (as ZIP, ARJ and 7-Zip
+ * do there) instead of storing a second copy that extracts onto the same
+ * file. Unix keeps the historical case-sensitive comparison.
+ */
+static int
+namecmp(const char *a, const char *b)
+{
+#ifdef _WIN32
+	return _stricmp(a, b);
+#else
+	return strcmp(a, b);
+#endif
+}
 int	readhdr(), unlink();
 #if	UNIX
 int	izadir();
@@ -150,7 +166,7 @@ addbunch(nfiles, path, name, move, update, fresh)	/* add a bunch of files */
 
 	for (n = 0; n < nfiles - 1; n++) {	/* sort the list of names */
 		for (m = n + 1; m < nfiles; m++) {
-			if (strcmp(name[n], name[m]) > 0) {
+			if (namecmp(name[n], name[m]) > 0) {
 				d = path[n];
 				path[n] = path[m];
 				path[m] = d;
@@ -162,13 +178,13 @@ addbunch(nfiles, path, name, move, update, fresh)	/* add a bunch of files */
 	}
 
 	for (n = 0; n < nfiles - 1;) {	/* consolidate the list of names */
-		if (!strcmp(path[n], path[n + 1])	/* if duplicate names */
-		    ||!strcmp(path[n], arcname)	/* or this archive */
+		if (!namecmp(path[n], path[n + 1])	/* if duplicate names */
+		    ||!namecmp(path[n], arcname)	/* or this archive */
 #if	UNIX
 		    ||izadir(path[n])	/* or a directory */
 #endif
-		    ||!strcmp(path[n], newname)	/* or the new version */
-		    ||!strcmp(path[n], bakname)) {	/* or its backup */
+		    ||!namecmp(path[n], newname)	/* or the new version */
+		    ||!namecmp(path[n], bakname)) {	/* or its backup */
 			free(path[n]);	/* then forget the file */
 			free(name[n]);
 			for (m = n; m < nfiles - 1; m++) {
@@ -180,12 +196,12 @@ addbunch(nfiles, path, name, move, update, fresh)	/* add a bunch of files */
 			n++;	/* else test the next one */
 	}
 
-	if (!strcmp(path[n], arcname)	/* special check for last file */
-	    ||!strcmp(path[n], newname)	/* courtesy of Rick Moore */
+	if (!namecmp(path[n], arcname)	/* special check for last file */
+	    ||!namecmp(path[n], newname)	/* courtesy of Rick Moore */
 #if	UNIX
 	    ||izadir(path[n])
 #endif
-	    || !strcmp(path[n], bakname)) {
+	    || !namecmp(path[n], bakname)) {
 		free(path[n]);
 		free(name[n]);
 		nfiles--;
@@ -195,7 +211,7 @@ addbunch(nfiles, path, name, move, update, fresh)	/* add a bunch of files */
 
 	for (n = 0; n < nfiles - 1; n++) {	/* watch out for duplicate
 						 * names */
-		if (!strcmp(name[n], name[n + 1]))
+		if (!namecmp(name[n], name[n + 1]))
 			arcdie("Duplicate filenames:\n  %s\n  %s", path[n], path[n + 1]);
 	}
 	openarc(1);		/* open archive for changes */
@@ -320,7 +336,7 @@ addfile(path, name, update, fresh)	/* add named file to archive */
 	if (arc) {		/* if adding to existing archive */
 		starts = ftell(arc);	/* where are we? */
 		while (readhdr(&ohdr, arc)) {	/* while more files to check */
-			if (!strcmp(ohdr.name, nhdr.name)) {
+			if (!namecmp(ohdr.name, nhdr.name)) {
 				upd = 1;	/* replace existing entry */
 				if (update || fresh) {	/* if updating or
 							 * freshening */
@@ -332,7 +348,7 @@ addfile(path, name, update, fresh)	/* add named file to archive */
 					}
 				}
 			}
-			if (strcmp(ohdr.name, nhdr.name) >= 0)
+			if (namecmp(ohdr.name, nhdr.name) >= 0)
 				break;	/* found our spot */
 
 			writehdr(&ohdr, new);	/* entry preceeds update;

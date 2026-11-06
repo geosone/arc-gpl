@@ -105,7 +105,42 @@ try {
             }
         }
     }
-    'PASS native ARC binary/text/empty/multiple-member round trip and optional reference archive/name checks'
+    # Mystic's "Update DIZ" adds a lower-case file_id.diz to an archive that
+    # usually holds FILE_ID.DIZ. Windows names ignore case, so the member is
+    # replaced there; Unix keeps both names as before.
+    $dizArchive = Join-Path $WorkDirectory 'diz.arc'
+    $dizDirectory = Join-Path $WorkDirectory 'dizfiles'
+    $null = New-Item -ItemType Directory -Path (Join-Path $dizDirectory 'old'), (Join-Path $dizDirectory 'new')
+    [IO.File]::WriteAllText((Join-Path $dizDirectory 'old/FILE_ID.DIZ'), "old`r`n")
+    [IO.File]::WriteAllText((Join-Path $dizDirectory 'new/file_id.diz'), "new`r`n")
+    foreach ($step in 'old/FILE_ID.DIZ', 'new/file_id.diz') {
+        $null = & $ArcPath a $dizArchive (Join-Path $dizDirectory $step)
+        if ($LASTEXITCODE -ne 0) {
+            throw "ARC could not add $step."
+        }
+    }
+    $members = @(& $ArcPath l $dizArchive | Where-Object { $_ -match '^(FILE_ID|file_id)\.(DIZ|diz)\s+\d' } | ForEach-Object { ($_ -split '\s+')[0] })
+    $expected = if ($IsWindows) {
+        'file_id.diz'
+    } else {
+        'FILE_ID.DIZ,file_id.diz'
+    }
+    if (($members -join ',') -cne $expected) {
+        throw "Adding file_id.diz left the members $($members -join ',')."
+    }
+    if ($IsWindows) {
+        Push-Location $outputDirectory
+        try {
+            $null = & $ArcPath eo $dizArchive
+            if ($LASTEXITCODE -ne 0 -or [IO.File]::ReadAllText((Join-Path $outputDirectory 'file_id.diz')) -ne "new`r`n") {
+                throw 'The replaced FILE_ID.DIZ member does not hold the new content.'
+            }
+            Remove-Item -LiteralPath (Join-Path $outputDirectory 'file_id.diz')
+        } finally {
+            Pop-Location
+        }
+    }
+    'PASS native ARC binary/text/empty/multiple-member round trip, case-insensitive member replacement on Windows and optional reference archive/name checks'
 } finally {
     if (!$keepWork) {
         Remove-Item -LiteralPath $WorkDirectory -Recurse -Force
